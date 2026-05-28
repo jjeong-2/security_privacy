@@ -8,6 +8,8 @@ on:
 jobs:
   run-bot:
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -26,4 +28,4 @@ jobs:
         NEWS_API_KEY: ${{ secrets.NEWS_API_KEY }}
         LAW_API_KEY: ${{ secrets.LAW_API_KEY }}
         KAKAO_REST_API_KEY: ${{ secrets.KAKAO_REST_API_KEY }}
-      run: python main.py
+      run: python main_v35.py
