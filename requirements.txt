@@ -1,0 +1,6 @@
+# 보안 알림 봇 - 필수 패키지
+# pip install -r requirements.txt
+
+requests==2.32.3
+python-dotenv==1.0.1
+schedule==1.2.2

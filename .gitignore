@@ -1,0 +1,46 @@
+# ============================================================
+#  .gitignore — GitHub 업로드 시 제외할 파일 목록
+# ============================================================
+
+# ★ 절대 업로드 금지: API 키/토큰이 담긴 환경파일
+.env
+*.env
+!.env.example   # .env.example은 예시 파일이므로 업로드 허용
+
+# Python 캐시
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+
+# 가상환경
+venv/
+.venv/
+env/
+ENV/
+
+# 로그 파일
+*.log
+security_alert.log
+
+# IDE 설정
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS 생성 파일
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 배포/빌드 산출물
+dist/
+build/
+*.egg-info/
+
+# 런타임 생성 파일 (GitHub Actions cache로 관리)
+law_seen.json
+
+# 테스트 스크립트
+test_*.py
