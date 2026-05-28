@@ -2,7 +2,8 @@ name: Security Alert Bot
 
 on:
   schedule:
-    - cron: '30 23 * * *' # 한국 시간 오전 8시 30분 (UTC 23:30)
+    - cron: '0 0 * * *'  # 한국 시간 오전 9시 00분 (UTC 00:00)
+    - cron: '0 3 * * *'  # 한국 시간 오후 12시 00분 (UTC 03:00)
   workflow_dispatch:
 
 jobs:
@@ -11,21 +12,27 @@ jobs:
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
-    - name: Checkout code
+    - name: 코드 가져오기
       uses: actions/checkout@v4
 
-    - name: Set up Python
+    - name: 파이썬 설정
       uses: actions/setup-python@v5
       with:
         python-version: '3.10'
 
-    - name: Install dependencies
+    - name: 라이브러리 설치
       run: |
         pip install -r requirements.txt
 
-    - name: Run Bot
+    - name: 봇 실행하기
       env:
         NEWS_API_KEY: ${{ secrets.NEWS_API_KEY }}
         LAW_API_KEY: ${{ secrets.LAW_API_KEY }}
+        SERPAPI_API_KEY: ${{ secrets.SERPAPI_API_KEY }}
+        NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
+        NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
+        KAKAO_ACCESS_TOKEN: ${{ secrets.KAKAO_ACCESS_TOKEN }}
+        KAKAO_REFRESH_TOKEN: ${{ secrets.KAKAO_REFRESH_TOKEN }}
         KAKAO_REST_API_KEY: ${{ secrets.KAKAO_REST_API_KEY }}
-      run: python main_v35.py
+        KAKAO_CHANNEL_PROFILE_KEY: ${{ secrets.KAKAO_CHANNEL_PROFILE_KEY }}
+      run: python main_v35.py --test
