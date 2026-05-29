@@ -2,7 +2,7 @@ name: Security Alert Bot
 
 on:
   schedule:
-    - cron: '0 0 * * *'  # 한국 시간 오전 9시 00분 (UTC 00:00)
+    - cron: '30 0 * * *'  # 한국 시간 오전 9시 30분 (UTC 00:30)
     - cron: '0 3 * * *'  # 한국 시간 오후 12시 00분 (UTC 03:00)
   workflow_dispatch:
 
