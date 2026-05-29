@@ -63,7 +63,7 @@ def _check_env() -> None:
 LAW_RECENCY_DAYS = 30
 LAW_CACHE_FILE = "law_seen.json"
 NEWS_MAX_PER_CATEGORY = 10
-SEND_CHUNK_SIZE = 2   # 카카오 텍스트 400자 제한 → 5에서 2로 변경
+SEND_CHUNK_SIZE = 1   # 카카오 텍스트 메모 200자 제한
 
 # ══════════════════════════════════════════════════════════
 # 🔑 카카오 토큰 자동 갱신
@@ -349,17 +349,19 @@ def _make_template(header: str, chunk: list, start_idx: int, has_law_update: boo
     lines = [header, ""]
     for rank, item in enumerate(chunk, start=start_idx):
         title = (item.get("title") or "").strip()
-        if len(title) > 40:
-            title = title[:39] + "…"
-        url   = (item.get("url") or "").strip()
-        date  = item.get("date", "")
+        if len(title) > 35:
+            title = title[:34] + "…"
+        url = (item.get("url") or "").strip()
+        if len(url) > 80:
+            url = url[:77] + "..."
+        date = item.get("date", "")
         date_str = f" [{date}]" if date else ""
-        lines.append(f"{rank}. {title}{date_str}\n🔗 {url}\n")
+        lines.append(f"{rank}. {title}{date_str}\n{url}")
     text_content = "\n".join(lines).strip()
-    if len(text_content) > 400:          # 카카오 400자 상한 안전망
-        text_content = text_content[:397] + "…"
-    target_url = "https://www.law.go.kr/LSW/lsInfoP.do" if has_law_update else "https://www.pipc.go.kr"
-    button_title = "업데이트 상세 내용 확인" if has_law_update else "개인정보보호위 홈페이지 이동"
+    if len(text_content) > 190:          # 카카오 텍스트 메모 200자 제한
+        text_content = text_content[:187] + "…"
+    target_url = url if url else ("https://www.law.go.kr/LSW/lsInfoP.do" if has_law_update else "https://www.pipc.go.kr")
+    button_title = "기사 보기"
     return {"object_type": "text", "text": text_content, "link": {"web_url": target_url, "mobile_web_url": target_url}, "button_title": button_title}
 
 def _send_channel(template: dict) -> bool:
