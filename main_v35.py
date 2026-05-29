@@ -112,9 +112,15 @@ def _classify_news(title: str):
 # 뉴스 수집 엔진
 # ══════════════════════════════════════════════════════════
 SECURITY_RSS_FEEDS = [
-    {"name": "데일리시큐", "url": "https://www.dailysecu.com/rss/allArticle.xml", "xpath": ".//item"},
-    {"name": "데이터넷", "url": "https://www.datanet.co.kr/rss/allArticle.xml", "xpath": ".//item"},
+    {"name": "데일리시큐",  "url": "https://www.dailysecu.com/rss/allArticle.xml",    "xpath": ".//item"},
+    {"name": "데이터넷",   "url": "https://www.datanet.co.kr/rss/allArticle.xml",     "xpath": ".//item"},
+    {"name": "보안뉴스",   "url": "https://www.boannews.com/rss/totalRss.xml",         "xpath": ".//item"},
+    {"name": "전자신문",   "url": "https://rss.etnews.com/Section901.xml",             "xpath": ".//item"},
+    {"name": "ZDNet",     "url": "https://zdnet.co.kr/rss/news/news_tech.xml",        "xpath": ".//item"},
+    {"name": "아이뉴스24", "url": "https://www.inews24.com/rss/rss_it.xml",           "xpath": ".//item"},
 ]
+
+NEWS_COLLECT_DAYS = 3  # 최근 N일치 뉴스 수집
 
 def _parse_rss_date(date_str: str):
     if not date_str: return None
@@ -144,12 +150,12 @@ def _fetch_naver(query: str) -> list:
     try:
         resp = requests.get("https://openapi.naver.com/v1/search/news.json", headers=headers, params=params, timeout=30)
         results = []
-        today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        cutoff = datetime.now() - timedelta(days=NEWS_COLLECT_DAYS)
         for item in resp.json().get("items", []):
             title = _clean_naver_text(item.get("title", ""))
             url   = (item.get("link") or item.get("originallink", "")).strip()
             pub_dt = _parse_rss_date(item.get("pubDate", ""))
-            if pub_dt and pub_dt < today_start: continue
+            if pub_dt and pub_dt < cutoff: continue
             if title and url: results.append({"title": title, "url": url, "source": "네이버뉴스"})
         return results
     except Exception as e:
@@ -164,7 +170,7 @@ def fetch_naver_news() -> list:
     return articles
 
 def fetch_rss_security_news() -> list:
-    today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    cutoff = datetime.now() - timedelta(days=NEWS_COLLECT_DAYS)
     articles = []
     for feed in SECURITY_RSS_FEEDS:
         try:
@@ -175,7 +181,7 @@ def fetch_rss_security_news() -> list:
                 title = _strip_html(item.findtext("title") or "")
                 url   = _strip_html(item.findtext("link") or "")
                 pub_dt = _parse_rss_date(item.findtext("pubDate") or "")
-                if pub_dt and pub_dt < today_start: continue
+                if pub_dt and pub_dt < cutoff: continue
                 if title and url:
                     articles.append({"title": title, "url": url, "source": feed["name"]})
                     count += 1
@@ -209,15 +215,14 @@ def fetch_newsapi() -> list:
 def fetch_serpapi_news() -> list:
     if not SERPAPI_API_KEY: return []
     articles = []
-    for q in ["정보보안 해킹", "개인정보 유출"]:
-        params = {"engine": "google", "q": q, "tbm": "nws", "tbs": "qdr:d", "hl": "ko", "gl": "kr", "num": 8, "api_key": SERPAPI_API_KEY}
+    for q in ["정보보안 해킹", "개인정보 유출", "사이버공격 보안", "개인정보보호 침해"]:
+        params = {"engine": "google", "q": q, "tbm": "nws", "tbs": "qdr:w", "hl": "ko", "gl": "kr", "num": 10, "api_key": SERPAPI_API_KEY}
         try:
             resp = requests.get("https://serpapi.com/search", params=params, timeout=30)
             for item in resp.json().get("news_results", []):
                 title = (item.get("title") or "").strip()
                 url   = (item.get("link") or "").strip()
                 date_str = item.get("date", "")
-                if "day" in date_str and "1 day" not in date_str: continue
                 if "week" in date_str or "month" in date_str: continue
                 if title and url: articles.append({"title": title, "url": url, "source": "Google뉴스"})
         except Exception as e: logger.warning(f"SerpApi 실패: {e}")
