@@ -132,7 +132,10 @@ def _parse_rss_date(date_str: str):
 
 def _strip_html(text: str) -> str:
     text = re.sub(r"<!\[CDATA\[|\]\]>", "", text)
-    return re.sub(r"<[^>]+>", "", text).strip()
+    text = re.sub(r"<[^>]+>", "", text)
+    for entity, char in [("&amp;", "&"), ("&lt;", "<"), ("&gt;", ">"), ("&quot;", '"'), ("&#39;", "'"), ("&apos;", "'"), ("&nbsp;", " ")]:
+        text = text.replace(entity, char)
+    return re.sub(r"\s+", " ", text).strip()
 
 def _clean_naver_text(text: str) -> str:
     if not text: return ""
@@ -378,7 +381,7 @@ def _send_channel(template: dict) -> bool:
 def _send_memo(template: dict) -> bool:
     if not KAKAO_ACCESS_TOKEN: return False
     headers = {"Authorization": f"Bearer {KAKAO_ACCESS_TOKEN}", "Content-Type": "application/x-www-form-urlencoded"}
-    payload = {"template_object": json.dumps(template, ensure_ascii=False)}
+    payload = {"template_object": json.dumps(template, ensure_ascii=True)}
     try:
         resp = requests.post(KAKAO_MEMO_URL, headers=headers, data=payload, timeout=30)
         if resp.status_code == 200 and resp.json().get("result_code") == 0:
