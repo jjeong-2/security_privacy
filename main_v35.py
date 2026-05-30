@@ -65,6 +65,10 @@ LAW_CACHE_FILE = "law_seen.json"
 NEWS_MAX_PER_CATEGORY = 10
 SEND_CHUNK_SIZE = 5
 
+def _news_cutoff() -> datetime:
+    """전일 자정부터 현재까지 (전일+당일 뉴스만)"""
+    return (datetime.now() - timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+
 # ══════════════════════════════════════════════════════════
 # 🔑 카카오 토큰 자동 갱신
 # ══════════════════════════════════════════════════════════
@@ -153,7 +157,7 @@ def _fetch_naver(query: str) -> list:
     try:
         resp = requests.get("https://openapi.naver.com/v1/search/news.json", headers=headers, params=params, timeout=30)
         results = []
-        cutoff = datetime.now() - timedelta(days=NEWS_COLLECT_DAYS)
+        cutoff = _news_cutoff()
         for item in resp.json().get("items", []):
             title = _clean_naver_text(item.get("title", ""))
             url   = (item.get("link") or item.get("originallink", "")).strip()
@@ -173,7 +177,7 @@ def fetch_naver_news() -> list:
     return articles
 
 def fetch_rss_security_news() -> list:
-    cutoff = datetime.now() - timedelta(days=NEWS_COLLECT_DAYS)
+    cutoff = _news_cutoff()
     articles = []
     for feed in SECURITY_RSS_FEEDS:
         try:
@@ -219,14 +223,12 @@ def fetch_serpapi_news() -> list:
     if not SERPAPI_API_KEY: return []
     articles = []
     for q in ["정보보안 해킹", "개인정보 유출", "사이버공격 보안", "개인정보보호 침해"]:
-        params = {"engine": "google", "q": q, "tbm": "nws", "tbs": "qdr:w", "hl": "ko", "gl": "kr", "num": 10, "api_key": SERPAPI_API_KEY}
+        params = {"engine": "google", "q": q, "tbm": "nws", "tbs": "qdr:d2", "hl": "ko", "gl": "kr", "num": 10, "api_key": SERPAPI_API_KEY}
         try:
             resp = requests.get("https://serpapi.com/search", params=params, timeout=30)
             for item in resp.json().get("news_results", []):
                 title = (item.get("title") or "").strip()
                 url   = (item.get("link") or "").strip()
-                date_str = item.get("date", "")
-                if "week" in date_str or "month" in date_str: continue
                 if title and url: articles.append({"title": title, "url": url, "source": "Google뉴스"})
         except Exception as e: logger.warning(f"SerpApi 실패: {e}")
     return articles
@@ -280,6 +282,8 @@ def _classify_law(title: str):
 _LAW_TARGET_META = {
     "law":    ("LawSearch",    "law",    "법령명한글",    "법령ID",          "공포일자"),
     "admrul": ("AdmRulSearch", "admrul", "행정규칙명",    "행정규칙일련번호", "발령일자"),
+    "ppc":    ("PpcSearch",    "ppc",    "사건명",        "일련번호",        "결정일자"),
+    "prec":   ("PrecSearch",   "prec",   "사건명",        "판례일련번호",    "선고일자"),
 }
 
 def _fetch_law_target(target: str, query: str, max_retries: int = 3):
@@ -313,6 +317,57 @@ def _fetch_law_target(target: str, query: str, max_retries: int = 3):
         if attempt < max_retries:
             time.sleep(2 ** attempt)  # 2초, 4초 대기 후 재시도
     return [], False
+
+PREC_RECENCY_DAYS = 90
+PREC_CACHE_FILE = "prec_seen.json"
+PREC_KEYWORDS = ["개인정보", "정보보호", "사이버", "해킹", "개인정보침해", "정보보안", "CCTV", "위치정보", "생체정보"]
+
+def _load_prec_cache():
+    if os.path.exists(PREC_CACHE_FILE):
+        try:
+            with open(PREC_CACHE_FILE, encoding="utf-8") as f: return set(json.load(f))
+        except: pass
+    return set()
+
+def _save_prec_cache(seen_ids):
+    try:
+        with open(PREC_CACHE_FILE, "w", encoding="utf-8") as f: json.dump(list(seen_ids), f, ensure_ascii=False)
+    except: pass
+
+def collect_precedents() -> list:
+    """판례(prec) + 개인정보보호위원회 결정(ppc) 수집"""
+    if not LAW_API_KEY: return []
+    raw_all = []
+    for target, queries in [
+        ("prec", ["개인정보", "정보보호", "사이버", "해킹"]),
+        ("ppc",  ["개인정보", "정보보호", "개인정보침해"]),
+    ]:
+        for query in queries:
+            items, _ = _fetch_law_target(target, query)
+            raw_all.extend(items)
+
+    seen_titles, deduped = set(), []
+    for r in raw_all:
+        if r["title"] not in seen_titles:
+            seen_titles.add(r["title"])
+            deduped.append(r)
+
+    sent_cache = _load_prec_cache()
+    result, new_ids = [], set()
+    cutoff_dt = datetime.now() - timedelta(days=PREC_RECENCY_DAYS)
+    for r in deduped:
+        if r["id"] in sent_cache: continue
+        date_str = r.get("date", "").replace("-", "").strip()
+        try:
+            if datetime.strptime(date_str, "%Y%m%d") < cutoff_dt: continue
+        except: continue
+        if any(kw in r["title"] for kw in PREC_KEYWORDS):
+            r["category"] = "prec"
+            result.append(r)
+            new_ids.add(r["id"])
+    _save_prec_cache(sent_cache | new_ids)
+    logger.info(f"판결/결정문: {len(result)}건 수집")
+    return result[:5]
 
 def collect_laws():
     if not LAW_API_KEY: return [], [], False
@@ -425,16 +480,24 @@ def run_daily_alert() -> None:
 
     infosec_news, privacy_news = collect_news()
     infosec_laws, privacy_laws, has_law_update = collect_laws()
+    precedents = collect_precedents()
 
-    logger.info(f"수집 결과 — 정보보안뉴스:{len(infosec_news)} 개인정보뉴스:{len(privacy_news)} 정보보안법령:{len(infosec_laws)} 개인정보법령:{len(privacy_laws)}")
+    logger.info(f"수집 결과 — 정보보안뉴스:{len(infosec_news)} 개인정보뉴스:{len(privacy_news)} "
+                f"정보보안법령:{len(infosec_laws)} 개인정보법령:{len(privacy_laws)} 판결/결정:{len(precedents)}")
 
-    if infosec_news: send_alert(f"🔒 정보보안 뉴스 ({today})", infosec_news, has_law_update)
-    if privacy_news: send_alert(f"🔐 개인정보 뉴스 ({today})", privacy_news, has_law_update)
+    if infosec_news:
+        send_alert(f"🔒 정보보안 뉴스 ({today})", infosec_news, has_law_update)
+    else:
+        logger.info("📭 오늘 정보보안 뉴스 없음")
+
+    if privacy_news:
+        send_alert(f"🔐 개인정보 뉴스 ({today})", privacy_news, has_law_update)
+    else:
+        logger.info("📭 오늘 개인정보 뉴스 없음")
+
     if infosec_laws: send_alert(f"🛡️ 정보보호 법령 변경 ({today})", infosec_laws, has_law_update)
     if privacy_laws: send_alert(f"👤 개인정보 법령 변경 ({today})", privacy_laws, has_law_update)
-
-    if not infosec_news and not privacy_news and not infosec_laws and not privacy_laws:
-        logger.warning("⚠️ 오늘 수집된 항목이 없습니다. 뉴스 소스 또는 API 키를 확인하세요.")
+    if precedents:   send_alert(f"⚖️ 주요 판결/결정문 ({today})", precedents, False)
 
     logger.info(f"  보안 알림 완료: {datetime.now().strftime('%H:%M:%S')}")
 
