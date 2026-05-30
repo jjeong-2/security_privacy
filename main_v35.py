@@ -63,7 +63,7 @@ def _check_env() -> None:
 LAW_RECENCY_DAYS = 30
 LAW_CACHE_FILE = "law_seen.json"
 NEWS_MAX_PER_CATEGORY = 10
-SEND_CHUNK_SIZE = 1   # 카카오 텍스트 메모 200자 제한
+SEND_CHUNK_SIZE = 5
 
 # ══════════════════════════════════════════════════════════
 # 🔑 카카오 토큰 자동 갱신
@@ -345,24 +345,27 @@ def collect_laws():
 KAKAO_CHANNEL_URL = "https://kapi.kakao.com/v1/api/talk/channels/message/send"
 KAKAO_MEMO_URL    = "https://kapi.kakao.com/v2/api/talk/memo/default/send"
 
+def _sanitize(text: str) -> str:
+    return re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', text).strip()
+
 def _make_template(header: str, chunk: list, start_idx: int, has_law_update: bool) -> dict:
-    lines = [header, ""]
+    last_url = "https://www.pipc.go.kr"
+    lines = [header]
     for rank, item in enumerate(chunk, start=start_idx):
-        title = (item.get("title") or "").strip()
-        if len(title) > 35:
-            title = title[:34] + "…"
-        url = (item.get("url") or "").strip()
-        if len(url) > 80:
-            url = url[:77] + "..."
-        date = item.get("date", "")
-        date_str = f" [{date}]" if date else ""
-        lines.append(f"{rank}. {title}{date_str}\n{url}")
+        title = _sanitize(item.get("title") or "")
+        if len(title) > 22:
+            title = title[:21] + "…"
+        url = _sanitize(item.get("url") or "")
+        if url:
+            last_url = url
+        lines.append(f"\n{rank}. {title}\n{url}")
     text_content = "\n".join(lines).strip()
-    if len(text_content) > 190:          # 카카오 텍스트 메모 200자 제한
-        text_content = text_content[:187] + "…"
-    target_url = url if url else ("https://www.law.go.kr/LSW/lsInfoP.do" if has_law_update else "https://www.pipc.go.kr")
-    button_title = "기사 보기"
-    return {"object_type": "text", "text": text_content, "link": {"web_url": target_url, "mobile_web_url": target_url}, "button_title": button_title}
+    return {
+        "object_type": "text",
+        "text": text_content,
+        "link": {"web_url": last_url, "mobile_web_url": last_url},
+        "button_title": "기사 보기"
+    }
 
 def _send_channel(template: dict) -> bool:
     if not KAKAO_CHANNEL_PROFILE_KEY: return False
