@@ -285,19 +285,21 @@ _LAW_TARGET_META = {
     "law":    ("LawSearch",    "law",    "법령명한글",    "법령ID",          "공포일자",  "name_law"),
     "admrul": ("AdmRulSearch", "admrul", "행정규칙명",    "행정규칙일련번호", "발령일자",  "name_admrul"),
     "ppc":    ("PpcSearch",    "ppc",    "사건명",        "일련번호",        "결정일자",  "name_ppc"),
-    "prec":   ("PrecSearch",   "prec",   "사건명",        "판례일련번호",    "선고일자",  "prec_id"),
+    "prec":   ("PrecSearch",   "prec",   "사건명",        "판례일련번호",    "선고일자",  "name_prec"),
 }
 
 def _build_law_url(url_type: str, title: str, law_id: str) -> str:
+    # 공백 제거 (예: "자동차 관리법" → "자동차관리법")
     name = title.replace(" ", "")
     if url_type == "name_law":
         return f"https://www.law.go.kr/법령/{name}"
     elif url_type == "name_admrul":
         return f"https://www.law.go.kr/행정규칙/{name}"
+    elif url_type == "name_prec":
+        return f"https://www.law.go.kr/판례/{name}"
     elif url_type == "name_ppc":
-        return f"https://www.law.go.kr/결정례/{name}"
-    elif url_type == "prec_id":
-        return f"https://www.law.go.kr/precInfoP.do?precSeq={law_id}"
+        # 개인정보보호위원회 결정 → 공식 결정례 목록 페이지
+        return "https://www.pipc.go.kr/np/cop/bbs/selectBoardList.do?bbsId=BS074&mCode=D010030000"
     return f"https://www.law.go.kr/법령/{name}"
 
 def _fetch_law_target(target: str, query: str, max_retries: int = 3):
