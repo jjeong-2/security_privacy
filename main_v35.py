@@ -457,7 +457,7 @@ def _send_channel(template: dict) -> bool:
 def _send_memo(template: dict) -> bool:
     if not KAKAO_ACCESS_TOKEN: return False
     headers = {"Authorization": f"Bearer {KAKAO_ACCESS_TOKEN}", "Content-Type": "application/x-www-form-urlencoded"}
-    payload = {"template_object": json.dumps(template, ensure_ascii=True)}
+    payload = {"template_object": json.dumps(template, ensure_ascii=False)}
     try:
         resp = requests.post(KAKAO_MEMO_URL, headers=headers, data=payload, timeout=30)
         if resp.status_code == 200 and resp.json().get("result_code") == 0:
