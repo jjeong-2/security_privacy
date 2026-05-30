@@ -18,6 +18,7 @@ import json
 import logging
 import xml.etree.ElementTree as ET
 import requests
+from bs4 import BeautifulSoup
 import schedule
 import time
 import re
@@ -334,6 +335,84 @@ def _fetch_law_target(target: str, query: str, max_retries: int = 3):
             time.sleep(2 ** attempt)  # 2초, 4초 대기 후 재시도
     return [], False
 
+# ══════════════════════════════════════════════════════════
+# 개인정보보호위원회 훈령·예규·고시 수집
+# ══════════════════════════════════════════════════════════
+PIPC_BBS_URL   = "https://www.pipc.go.kr/np/cop/bbs/selectBoardList.do?bbsId=BS216&mCode=D010020010"
+PIPC_ART_URL   = "https://www.pipc.go.kr/np/cop/bbs/selectBoardArticle.do?bbsId=BS216&mCode=D010020010&nttId={nttId}"
+PIPC_CACHE_FILE = "pipc_seen.json"
+
+def _load_pipc_cache():
+    if os.path.exists(PIPC_CACHE_FILE):
+        try:
+            with open(PIPC_CACHE_FILE, encoding="utf-8") as f: return set(json.load(f))
+        except: pass
+    return set()
+
+def _save_pipc_cache(seen_ids):
+    try:
+        with open(PIPC_CACHE_FILE, "w", encoding="utf-8") as f: json.dump(list(seen_ids), f, ensure_ascii=False)
+    except: pass
+
+def fetch_pipc_laws() -> list:
+    """개보위 훈령·예규·고시 게시판에서 새 게시물 수집"""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "ko-KR,ko;q=0.9",
+        "Referer": "https://www.pipc.go.kr",
+    }
+    try:
+        resp = requests.get(PIPC_BBS_URL, headers=headers, timeout=30)
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.text, "html.parser")
+        rows = soup.select("table tbody tr")
+        if not rows:
+            logger.warning("PIPC 게시판 파싱 실패: tr 없음")
+            return []
+
+        sent_cache = _load_pipc_cache()
+        cutoff = _news_cutoff()
+        results, new_ids = [], set()
+
+        for row in rows:
+            link_el = row.select_one("td a[href]")
+            date_cells = row.select("td")
+            if not link_el: continue
+
+            href = link_el.get("href", "")
+            ntt_id = ""
+            if "nttId=" in href:
+                ntt_id = href.split("nttId=")[-1].split("&")[0]
+
+            title = link_el.get_text(strip=True)
+            date_str = ""
+            for cell in date_cells:
+                text = cell.get_text(strip=True)
+                if len(text) == 10 and text.count("-") == 2:
+                    date_str = text
+                    break
+
+            if not ntt_id or not title: continue
+            if ntt_id in sent_cache: continue
+
+            try:
+                pub_dt = datetime.strptime(date_str, "%Y-%m-%d")
+                if pub_dt < cutoff: continue
+            except: continue
+
+            url = PIPC_ART_URL.format(nttId=ntt_id)
+            results.append({"title": title, "url": url, "date": date_str, "id": ntt_id})
+            new_ids.add(ntt_id)
+
+        _save_pipc_cache(sent_cache | new_ids)
+        logger.info(f"개보위 법령정보: {len(results)}건 수집")
+        return results[:5]
+
+    except Exception as e:
+        logger.warning(f"PIPC 법령정보 수집 실패: {e}")
+        return []
+
 PREC_RECENCY_DAYS = 90
 PREC_CACHE_FILE = "prec_seen.json"
 PREC_KEYWORDS = ["개인정보", "정보보호", "사이버", "해킹", "개인정보침해", "정보보안", "CCTV", "위치정보", "생체정보"]
@@ -497,9 +576,11 @@ def run_daily_alert() -> None:
     infosec_news, privacy_news = collect_news()
     infosec_laws, privacy_laws, has_law_update = collect_laws()
     precedents = collect_precedents()
+    pipc_laws = fetch_pipc_laws()
 
     logger.info(f"수집 결과 — 정보보안뉴스:{len(infosec_news)} 개인정보뉴스:{len(privacy_news)} "
-                f"정보보안법령:{len(infosec_laws)} 개인정보법령:{len(privacy_laws)} 판결/결정:{len(precedents)}")
+                f"정보보안법령:{len(infosec_laws)} 개인정보법령:{len(privacy_laws)} "
+                f"판결/결정:{len(precedents)} 개보위법령:{len(pipc_laws)}")
 
     if infosec_news:
         send_alert(f"🔒 정보보안 뉴스 ({today})", infosec_news, has_law_update)
@@ -518,6 +599,7 @@ def run_daily_alert() -> None:
     if infosec_laws: send_alert(f"🛡️ 정보보호 법령 변경 ({today})", infosec_laws, has_law_update)
     if privacy_laws: send_alert(f"👤 개인정보 법령 변경 ({today})", privacy_laws, has_law_update)
     if precedents:   send_alert(f"⚖️ 주요 판결/결정문 ({today})", precedents, False)
+    if pipc_laws:    send_alert(f"📋 개보위 법령정보 ({today})", pipc_laws, False)
 
     logger.info(f"  보안 알림 완료: {datetime.now().strftime('%H:%M:%S')}")
 
