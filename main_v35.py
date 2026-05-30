@@ -489,12 +489,16 @@ def run_daily_alert() -> None:
     if infosec_news:
         send_alert(f"🔒 정보보안 뉴스 ({today})", infosec_news, has_law_update)
     else:
-        logger.info("📭 오늘 정보보안 뉴스 없음")
+        _send_memo({"object_type": "text", "text": f"🔒 정보보안 뉴스 ({today})\n\n오늘의 주요뉴스 없음",
+                    "link": {"web_url": "https://www.boannews.com", "mobile_web_url": "https://www.boannews.com"}, "button_title": "보안뉴스 바로가기"})
+        logger.info("📭 정보보안 뉴스 없음 알림 발송")
 
     if privacy_news:
         send_alert(f"🔐 개인정보 뉴스 ({today})", privacy_news, has_law_update)
     else:
-        logger.info("📭 오늘 개인정보 뉴스 없음")
+        _send_memo({"object_type": "text", "text": f"🔐 개인정보 뉴스 ({today})\n\n오늘의 주요뉴스 없음",
+                    "link": {"web_url": "https://www.pipc.go.kr", "mobile_web_url": "https://www.pipc.go.kr"}, "button_title": "개인정보위 바로가기"})
+        logger.info("📭 개인정보 뉴스 없음 알림 발송")
 
     if infosec_laws: send_alert(f"🛡️ 정보보호 법령 변경 ({today})", infosec_laws, has_law_update)
     if privacy_laws: send_alert(f"👤 개인정보 법령 변경 ({today})", privacy_laws, has_law_update)
