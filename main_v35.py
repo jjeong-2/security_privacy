@@ -280,10 +280,11 @@ def _classify_law(title: str):
     return None
 
 _LAW_TARGET_META = {
-    "law":    ("LawSearch",    "law",    "법령명한글",    "법령ID",          "공포일자"),
-    "admrul": ("AdmRulSearch", "admrul", "행정규칙명",    "행정규칙일련번호", "발령일자"),
-    "ppc":    ("PpcSearch",    "ppc",    "사건명",        "일련번호",        "결정일자"),
-    "prec":   ("PrecSearch",   "prec",   "사건명",        "판례일련번호",    "선고일자"),
+    # (root_tag, item_tag, name_field, id_field, date_field, url_template)
+    "law":    ("LawSearch",    "law",    "법령명한글",    "법령ID",          "공포일자",  "https://www.law.go.kr/lsInfoP.do?lsiSeq={id}"),
+    "admrul": ("AdmRulSearch", "admrul", "행정규칙명",    "행정규칙일련번호", "발령일자",  "https://www.law.go.kr/admRulInfoP.do?admRulSeq={id}"),
+    "ppc":    ("PpcSearch",    "ppc",    "사건명",        "일련번호",        "결정일자",  "https://www.law.go.kr/crdInfoP.do?crdSeq={id}"),
+    "prec":   ("PrecSearch",   "prec",   "사건명",        "판례일련번호",    "선고일자",  "https://www.law.go.kr/precInfoP.do?precSeq={id}"),
 }
 
 def _fetch_law_target(target: str, query: str, max_retries: int = 3):
@@ -291,8 +292,7 @@ def _fetch_law_target(target: str, query: str, max_retries: int = 3):
     if target not in _LAW_TARGET_META:
         logger.warning(f"지원하지 않는 법령 target: {target}")
         return [], False
-    from urllib.parse import quote
-    root_tag, item_tag, name_field, id_field, date_field = _LAW_TARGET_META[target]
+    root_tag, item_tag, name_field, id_field, date_field, url_tmpl = _LAW_TARGET_META[target]
     params = {"OC": LAW_API_KEY, "target": target, "query": query, "type": "XML", "display": 20, "page": 1, "sort": "lasc"}
     for attempt in range(1, max_retries + 1):
         try:
@@ -309,7 +309,8 @@ def _fetch_law_target(target: str, query: str, max_retries: int = 3):
                     title  = (title_el.text or "").strip()
                     law_id = (id_el.text if id_el is not None else "").strip()
                     if title and law_id:
-                        results.append({"title": title, "url": f"https://www.law.go.kr/법령/{quote(title, safe='')}", "date": (date_el.text if date_el is not None else "").strip(), "id": law_id, "target": target})
+                        url = url_tmpl.format(id=law_id)
+                        results.append({"title": title, "url": url, "date": (date_el.text if date_el is not None else "").strip(), "id": law_id, "target": target})
                 return results, is_updated
             logger.warning(f"법령 API 응답 오류 ({target}/{query}) [{resp.status_code}] 시도 {attempt}/{max_retries}")
         except Exception as e:
